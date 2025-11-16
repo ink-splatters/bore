@@ -1,8 +1,8 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, path::PathBuf};
 
 use anyhow::Result;
 use bore_cli::{client::Client, server::Server};
-use clap::{error::ErrorKind, CommandFactory, Parser, Subcommand};
+use clap::{error::ErrorKind, ArgGroup, CommandFactory, Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
@@ -14,14 +14,19 @@ struct Args {
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Starts a local proxy to the remote server.
+    #[clap(group(ArgGroup::new("target").required(true).args(["local_port", "socket"])))]
     Local {
         /// The local port to expose.
         #[clap(env = "BORE_LOCAL_PORT")]
-        local_port: u16,
+        local_port: Option<u16>,
 
         /// The local host to expose.
         #[clap(short, long, value_name = "HOST", default_value = "localhost")]
         local_host: String,
+
+        /// Unix socket to expose.
+        #[clap(short = 's', long, value_name = "PATH")]
+        socket: Option<PathBuf>,
 
         /// Address of the remote server to expose local ports to.
         #[clap(short, long, env = "BORE_SERVER")]
@@ -32,7 +37,7 @@ enum Command {
         port: u16,
 
         /// Optional secret for authentication.
-        #[clap(short, long, env = "BORE_SECRET", hide_env_values = true)]
+        #[clap(short = 'k', long, env = "BORE_SECRET", hide_env_values = true)]
         secret: Option<String>,
     },
 
@@ -66,11 +71,20 @@ async fn run(command: Command) -> Result<()> {
         Command::Local {
             local_host,
             local_port,
+            socket,
             to,
             port,
             secret,
         } => {
-            let client = Client::new(&local_host, local_port, &to, port, secret.as_deref()).await?;
+            let client = match (local_port, socket) {
+                (Some(local_port), None) => {
+                    Client::new(&local_host, local_port, &to, port, secret.as_deref()).await?
+                }
+                (None, Some(socket_path)) => {
+                    Client::new_unix_socket(socket_path, &to, port, secret.as_deref()).await?
+                }
+                _ => unreachable!("clap ensures exactly one of local_port or socket is provided"),
+            };
             client.listen().await?;
         }
         Command::Server {

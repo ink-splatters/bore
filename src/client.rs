@@ -1,14 +1,27 @@
 //! Client implementation for the `bore` service.
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{bail, Context, Result};
-use tokio::{io::AsyncWriteExt, net::TcpStream, time::timeout};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpStream, UnixStream},
+    time::timeout,
+};
 use tracing::{error, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::auth::Authenticator;
 use crate::shared::{ClientMessage, Delimited, ServerMessage, CONTROL_PORT, NETWORK_TIMEOUT};
+
+/// Represents the local target to forward connections to.
+#[derive(Clone)]
+enum LocalTarget {
+    /// TCP target with host and port.
+    Tcp { host: String, port: u16 },
+    /// Unix socket target with path.
+    UnixSocket { path: PathBuf },
+}
 
 /// State structure for the client.
 pub struct Client {
@@ -18,11 +31,8 @@ pub struct Client {
     /// Destination address of the server.
     to: String,
 
-    // Local host that is forwarded.
-    local_host: String,
-
-    /// Local port that is forwarded.
-    local_port: u16,
+    /// Local target to forward connections to.
+    local_target: LocalTarget,
 
     /// Port that is publicly available on the remote.
     remote_port: u16,
@@ -32,10 +42,35 @@ pub struct Client {
 }
 
 impl Client {
-    /// Create a new client.
+    /// Create a new client for TCP target.
     pub async fn new(
         local_host: &str,
         local_port: u16,
+        to: &str,
+        port: u16,
+        secret: Option<&str>,
+    ) -> Result<Self> {
+        let local_target = LocalTarget::Tcp {
+            host: local_host.to_string(),
+            port: local_port,
+        };
+        Self::create(local_target, to, port, secret).await
+    }
+
+    /// Create a new client for Unix socket target.
+    pub async fn new_unix_socket(
+        socket_path: PathBuf,
+        to: &str,
+        port: u16,
+        secret: Option<&str>,
+    ) -> Result<Self> {
+        let local_target = LocalTarget::UnixSocket { path: socket_path };
+        Self::create(local_target, to, port, secret).await
+    }
+
+    /// Internal method to create a client with the given local target.
+    async fn create(
+        local_target: LocalTarget,
         to: &str,
         port: u16,
         secret: Option<&str>,
@@ -56,14 +91,18 @@ impl Client {
             Some(_) => bail!("unexpected initial non-hello message"),
             None => bail!("unexpected EOF"),
         };
-        info!(remote_port, "connected to server");
+
+        let target_info = match &local_target {
+            LocalTarget::Tcp { host, port } => format!("{host}:{port}"),
+            LocalTarget::UnixSocket { path } => format!("unix:{}", path.display()),
+        };
+        info!(remote_port, %target_info, "connected to server");
         info!("listening at {to}:{remote_port}");
 
         Ok(Client {
             conn: Some(stream),
             to: to.to_string(),
-            local_host: local_host.to_string(),
-            local_port,
+            local_target,
             remote_port,
             auth,
         })
@@ -109,11 +148,23 @@ impl Client {
             auth.client_handshake(&mut remote_conn).await?;
         }
         remote_conn.send(ClientMessage::Accept(id)).await?;
-        let mut local_conn = connect_with_timeout(&self.local_host, self.local_port).await?;
-        let mut parts = remote_conn.into_parts();
-        debug_assert!(parts.write_buf.is_empty(), "framed write buffer not empty");
-        local_conn.write_all(&parts.read_buf).await?; // mostly of the cases, this will be empty
-        tokio::io::copy_bidirectional(&mut local_conn, &mut parts.io).await?;
+
+        match &self.local_target {
+            LocalTarget::Tcp { host, port } => {
+                let mut local_conn = connect_with_timeout(host, *port).await?;
+                let mut parts = remote_conn.into_parts();
+                debug_assert!(parts.write_buf.is_empty(), "framed write buffer not empty");
+                local_conn.write_all(&parts.read_buf).await?;
+                tokio::io::copy_bidirectional(&mut local_conn, &mut parts.io).await?;
+            }
+            LocalTarget::UnixSocket { path } => {
+                let mut local_conn = connect_unix_socket_with_timeout(path).await?;
+                let mut parts = remote_conn.into_parts();
+                debug_assert!(parts.write_buf.is_empty(), "framed write buffer not empty");
+                local_conn.write_all(&parts.read_buf).await?;
+                tokio::io::copy_bidirectional(&mut local_conn, &mut parts.io).await?;
+            }
+        }
         Ok(())
     }
 }
@@ -124,4 +175,12 @@ async fn connect_with_timeout(to: &str, port: u16) -> Result<TcpStream> {
         Err(err) => Err(err.into()),
     }
     .with_context(|| format!("could not connect to {to}:{port}"))
+}
+
+async fn connect_unix_socket_with_timeout(path: &PathBuf) -> Result<UnixStream> {
+    match timeout(NETWORK_TIMEOUT, UnixStream::connect(path)).await {
+        Ok(res) => res,
+        Err(err) => Err(err.into()),
+    }
+    .with_context(|| format!("could not connect to unix socket {}", path.display()))
 }

@@ -17,7 +17,7 @@ enum Command {
     #[clap(group(ArgGroup::new("target").required(true).args(["local_port", "socket"])))]
     Local {
         /// The local port to expose.
-        #[clap(env = "BORE_LOCAL_PORT")]
+        #[clap(short = 'p', long = "port", value_name = "PORT", env = "BORE_LOCAL_PORT")]
         local_port: Option<u16>,
 
         /// The local host to expose.
@@ -33,7 +33,7 @@ enum Command {
         to: String,
 
         /// Optional port on the remote server to select.
-        #[clap(short, long, default_value_t = 0)]
+        #[clap(short = 'r', long = "remote-port", default_value_t = 0)]
         port: u16,
 
         /// Optional secret for authentication.

@@ -13,11 +13,15 @@
       bore-cli = craneLib.buildPackage (commonArgs
         // {
           inherit cargoArtifacts;
+          # Tests are run via separate checks (bore-cli-nextest)
+          doCheck = false;
         });
 
       bore-cli-native = craneLib.buildPackage (commonArgsNative
         // {
           inherit cargoArtifactsNative;
+          # Tests are run via separate checks (bore-cli-nextest)
+          doCheck = false;
         });
     };
   };

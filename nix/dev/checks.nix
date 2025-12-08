@@ -30,6 +30,10 @@
           inherit cargoArtifacts;
           partitions = 1;
           partitionType = "count";
+          # Allow localhost networking for e2e tests on Darwin
+          __darwinAllowLocalNetworking = true;
+          # Run tests serially (they share CONTROL_PORT) and skip network-dependent test
+          cargoNextestExtraArgs = "-j 1 -- --skip invalid_address";
         }
       );
     };

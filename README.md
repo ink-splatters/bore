@@ -31,6 +31,12 @@ Similar to [localtunnel](https://github.com/localtunnel/localtunnel) and [ngrok]
 brew install bore-cli
 ```
 
+or if you use `nix`, it can be installed as flake:
+
+```sh
+nix profile add github:ink-splatters/bore?ref=v0.7.0-dev
+```
+
 ### Linux
 
 #### Arch Linux

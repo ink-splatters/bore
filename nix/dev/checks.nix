@@ -3,9 +3,9 @@
     inherit (config) craneLib src commonArgs cargoArtifacts;
   in {
     checks = {
-      inherit (config.packages) bore;
+      inherit (config.packages) bore-cli;
 
-      bore-clippy = craneLib.cargoClippy (
+      bore-cli-clippy = craneLib.cargoClippy (
         commonArgs
         // {
           inherit cargoArtifacts;
@@ -13,18 +13,18 @@
         }
       );
 
-      bore-doc = craneLib.cargoDoc (
+      bore-cli-doc = craneLib.cargoDoc (
         commonArgs
         // {
           inherit cargoArtifacts;
         }
       );
 
-      bore-fmt = craneLib.cargoFmt {
+      bore-cli-fmt = craneLib.cargoFmt {
         inherit src;
       };
 
-      bore-nextest = craneLib.cargoNextest (
+      bore-cli-nextest = craneLib.cargoNextest (
         commonArgs
         // {
           inherit cargoArtifacts;

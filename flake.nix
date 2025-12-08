@@ -60,10 +60,10 @@
         options.src = lib.mkOption {
           default = builtins.path {
             path = ./.;
-            name = "bore";
+            name = "bore-cli";
           };
         };
-        config.packages.default = config.packages.bore-native;
+        config.packages.default = config.packages.bore-cli-native;
       };
 
       flake = {

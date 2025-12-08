@@ -10,12 +10,12 @@
     inherit (config) craneLib commonArgs commonArgsNative cargoArtifacts cargoArtifactsNative;
   in {
     packages = {
-      bore = craneLib.buildPackage (commonArgs
+      bore-cli = craneLib.buildPackage (commonArgs
         // {
           inherit cargoArtifacts;
         });
 
-      bore-native = craneLib.buildPackage (commonArgsNative
+      bore-cli-native = craneLib.buildPackage (commonArgsNative
         // {
           inherit cargoArtifactsNative;
         });
